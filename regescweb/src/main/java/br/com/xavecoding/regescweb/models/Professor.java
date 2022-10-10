@@ -19,6 +19,12 @@ public class Professor {
 
     public Professor(){ }
 
+    public Professor(String nome, BigDecimal salario, StatusProfessor status) {
+        this.nome = nome;
+        this.salario = salario;
+        this.status = status;
+    }
+
     public Long getId() {
         return id;
     }
@@ -49,5 +55,15 @@ public class Professor {
 
     public void setStatus(StatusProfessor status) {
         this.status = status;
+    }
+
+    @Override
+    public String toString() {
+        return "Professor{" +
+                "id=" + id +
+                ", nome='" + nome + '\'' +
+                ", salario=" + salario +
+                ", status=" + status +
+                '}';
     }
 }
