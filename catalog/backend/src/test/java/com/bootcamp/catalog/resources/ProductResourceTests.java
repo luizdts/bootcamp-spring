@@ -17,7 +17,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
@@ -29,28 +30,43 @@ import com.bootcamp.catalog.services.ProductService;
 import com.bootcamp.catalog.services.exceptions.DatabaseException;
 import com.bootcamp.catalog.services.exceptions.ResourceNotFoundException;
 import com.bootcamp.catalog.tests.Factory;
+import com.bootcamp.catalog.tests.TokenUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-@WebMvcTest(ProductResource.class)
+@SpringBootTest
+@AutoConfigureMockMvc
 public class ProductResourceTests {
 	
+	// MockMvc utilizado para chamar endpoint no teste
 	@Autowired
 	private MockMvc mockMvc;
-	
+
 	@MockBean
 	private ProductService service;
 	
 	@Autowired
 	private ObjectMapper objectMapper;
 	
-	private PageImpl<ProductDTO> page;
-	private ProductDTO productDTO;
+	@Autowired
+	private TokenUtil tokenUtil;
+	
 	private Long existingId;
 	private Long nonExistingId;
 	private Long dependentId;
+	private ProductDTO productDTO;
+	
+	private String username;
+	private String password;
+	
+	// PageImpl ao invez de Page porque ele é objeto de página concreto e aceita o new
+	private PageImpl<ProductDTO> page;
 	
 	@BeforeEach
 	void setUp() throws Exception {
+		
+		username = "maria@gmail.com";
+		password = "123456";
+		
 		existingId = 1L;
 		nonExistingId = 2L;
 		dependentId = 3L;
@@ -58,44 +74,62 @@ public class ProductResourceTests {
 		productDTO = Factory.createProductDTO();
 		page = new PageImpl<>(List.of(productDTO));
 		
-		when(service.findAllPaged(any())).thenReturn(page);
+		// Simulando mockado service.findAllPaged com qualquer argumento(any)
+		when(service.findAllPaged(any(), any(), any())).thenReturn(page);
 		
+		// Simulando mockado service.findById
 		when(service.findById(existingId)).thenReturn(productDTO);
 		when(service.findById(nonExistingId)).thenThrow(ResourceNotFoundException.class);
 		
+		// Simulando mockado service.update
 		when(service.update(eq(existingId), any())).thenReturn(productDTO);
 		when(service.update(eq(nonExistingId), any())).thenThrow(ResourceNotFoundException.class);
 		
-		when(service.insert(any())).thenReturn(productDTO);
-		
+		// Simulando mockado service.delete
 		doNothing().when(service).delete(existingId);
 		doThrow(ResourceNotFoundException.class).when(service).delete(nonExistingId);
 		doThrow(DatabaseException.class).when(service).delete(dependentId);
+		
+		// Simulando mockado service.insert
+		when(service.insert(any())).thenReturn(productDTO);
+		
 	}
 	
 	@Test
 	public void deleteShouldReturnNoContentWhenIdExists() throws Exception{
 		
+		String accessToken = tokenUtil.obtainAccessToken(mockMvc, username, password);
+		
 		ResultActions result = mockMvc.perform(delete("/products/{id}", existingId)
+				.header("Authorization", "Bearer " + accessToken)
 				.accept(MediaType.APPLICATION_JSON));
 		
 		result.andExpect(status().isNoContent());
+		
 	}
 	
 	@Test
-	public void deleteShouldReturnNotFoundWhenIdDoesNotExists() throws Exception{
+	public void deleteShouldReturnNotFoundContentWhenIdDoesNotExists() throws Exception{
+		
+		String accessToken = tokenUtil.obtainAccessToken(mockMvc, username, password);
 		
 		ResultActions result = mockMvc.perform(delete("/products/{id}", nonExistingId)
+				.header("Authorization", "Bearer " + accessToken)
 				.accept(MediaType.APPLICATION_JSON));
 		
 		result.andExpect(status().isNotFound());
+		
 	}
 	
 	@Test
-	public void insertShouldReturnProductDTOCreated() throws Exception {
+	public void insertShouldReturnProductDTOCreated() throws Exception{
+		
+		String accessToken = tokenUtil.obtainAccessToken(mockMvc, username, password);
+		
 		String jsonBody = objectMapper.writeValueAsString(productDTO);
 		
 		ResultActions result = mockMvc.perform(post("/products")
+				.header("Authorization", "Bearer " + accessToken)
 				.content(jsonBody)
 				.contentType(MediaType.APPLICATION_JSON)
 				.accept(MediaType.APPLICATION_JSON));
@@ -107,11 +141,15 @@ public class ProductResourceTests {
 	}
 	
 	@Test
-	public void updateShouldReturnProductDTOWhenIdExists() throws Exception {
+	public void updateShouldReturnProductDTOWhenIdExists() throws Exception{
 		
+		String accessToken = tokenUtil.obtainAccessToken(mockMvc, username, password);
+		
+		// Convertendo obj java em String 
 		String jsonBody = objectMapper.writeValueAsString(productDTO);
 		
 		ResultActions result = mockMvc.perform(put("/products/{id}", existingId)
+				.header("Authorization", "Bearer " + accessToken)
 				.content(jsonBody)
 				.contentType(MediaType.APPLICATION_JSON)
 				.accept(MediaType.APPLICATION_JSON));
@@ -120,47 +158,62 @@ public class ProductResourceTests {
 		result.andExpect(jsonPath("$.id").exists());
 		result.andExpect(jsonPath("$.name").exists());
 		result.andExpect(jsonPath("$.description").exists());
-		
 	}
 	
 	@Test
-	public void updateShouldReturnNotFoundWhenIdDoesNotExists() throws Exception {
+	public void updateShouldReturnNotFoundWhenIdDoesNotExists() throws Exception{
+		
+		String accessToken = tokenUtil.obtainAccessToken(mockMvc, username, password);
 		
 		String jsonBody = objectMapper.writeValueAsString(productDTO);
 		
 		ResultActions result = mockMvc.perform(put("/products/{id}", nonExistingId)
+				.header("Authorization", "Bearer " + accessToken)
 				.content(jsonBody)
 				.contentType(MediaType.APPLICATION_JSON)
 				.accept(MediaType.APPLICATION_JSON));
 		
 		result.andExpect(status().isNotFound());
+		
 	}
 	
+	
 	@Test
-	public void findAllShouldReturnPage() throws Exception {
+	public void findAllShouldReturnPage() throws Exception{
 		
+		// Fazendo requisição get e esperando o resultado ok(200) tudo na mesma linha
+		// mockMvc.perform(get("/products")).andExpect(status().isOk());
+		
+		// Outra forma de fazer para facilitar o entendimento Legibilidade 
 		ResultActions result = mockMvc.perform(get("/products")
 				.accept(MediaType.APPLICATION_JSON));
 		
-		result.andExpect(status().isOk()); // 200
+		result.andExpect(status().isOk());
 	}
 	
 	@Test
 	public void findByIdShouldReturnProductWhenIdExists() throws Exception {
+		
 		ResultActions result = mockMvc.perform(get("/products/{id}", existingId)
 				.accept(MediaType.APPLICATION_JSON));
 		
 		result.andExpect(status().isOk());
+		
+		// $ - acessa o obj da resposta
+		// jsonPath - corpo da resposta
 		result.andExpect(jsonPath("$.id").exists());
 		result.andExpect(jsonPath("$.name").exists());
 		result.andExpect(jsonPath("$.description").exists());
+		
 	}
 	
 	@Test
-	public void findByIdShouldReturnNotFoundWhenIdDoesNotExists() throws Exception {
+	public void findByIdShouldReturnNotFoundWhenIdDoesNotExists() throws Exception{
+		
 		ResultActions result = mockMvc.perform(get("/products/{id}", nonExistingId)
 				.accept(MediaType.APPLICATION_JSON));
 		
 		result.andExpect(status().isNotFound());
+		
 	}
 }

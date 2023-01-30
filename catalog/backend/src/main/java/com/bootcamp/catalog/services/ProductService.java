@@ -1,5 +1,7 @@
 package com.bootcamp.catalog.services;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import javax.persistence.EntityNotFoundException;
@@ -29,10 +31,28 @@ public class ProductService {
 
 	@Autowired
 	private CategoryRepository categoryRepository;
+
 	@Transactional(readOnly = true)
-	public Page<ProductDTO> findAllPaged(Pageable pageable) {
+	public Page<ProductDTO> findAllPaged(Long categoryId, String name, Pageable pageable){
+		
+		// Consulta JPA no repository é bom instanciar o obj category e não só passar o ID
+		// Se for 0 vai dar problema, validei na expressão condicional ternária
+		// Arrays.asList: para criar a lista com o getReferenceById
+		List<Category> categories = (categoryId == 0) ? null : Arrays.asList(categoryRepository.getReferenceById(categoryId));
+		Page<Product> page = repository.find(categories, name, pageable);
+		
+		// page.getContent() converte página para lista, criado a linha abaixo para resolver o problema N+1 consultas quando varre o DTO buscando a categoria do produto 
+		repository.findProductsWithCategories(page.getContent());
+		return page.map(x -> new ProductDTO(x, x.getCategories()));
+		
+	}
+	
+	// Sem Categoria, criei para não dar erro na IDE devido a ter teste automatizada sem categoria 
+	@Transactional(readOnly = true)
+	public Page<ProductDTO> findAllPaged(Pageable pageable){
 		Page<Product> list = repository.findAll(pageable);
 		return list.map(x -> new ProductDTO(x));
+		
 	}
 
 	@Transactional(readOnly = true)
@@ -47,7 +67,7 @@ public class ProductService {
 	public ProductDTO insert(ProductDTO dto) {
 		Product entity = new Product();
 		copyDtoToEntity(dto, entity);
-		//entity.setName(dto.getName());
+		// entity.setName(dto.getName());
 		entity = repository.save(entity);
 
 		return new ProductDTO(entity);
@@ -74,22 +94,21 @@ public class ProductService {
 			throw new DatabaseException("Integrity violation");
 		}
 	}
-	
+
 	private void copyDtoToEntity(ProductDTO dto, Product entity) {
-		
+
 		entity.setName(dto.getName());
 		entity.setDescription(dto.getDescription());
 		entity.setDate(dto.getDate());
 		entity.setImgUrl(dto.getImgUrl());
 		entity.setPrice(dto.getPrice());
-		
+
 		entity.getCategories().clear();
-		
-		for(CategoryDTO catDto : dto.getCategories()) {
+
+		for (CategoryDTO catDto : dto.getCategories()) {
 			Category category = categoryRepository.getOne(catDto.getId());
 			entity.getCategories().add(category);
 		}
 	}
-
 
 }
